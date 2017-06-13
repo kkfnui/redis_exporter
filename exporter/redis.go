@@ -135,6 +135,12 @@ func (e *Exporter) initGauges() {
 		Name:      "command_call_duration_seconds_sum",
 		Help:      "Total amount of time in seconds spent per command",
 	}, []string{"addr", "alias", "cmd"})
+
+	e.metrics["replication_slave_lag"] = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: e.namespace,
+		Name:      "replication_slave_lag",
+		Help:      "Slave sync lag",
+	}, []string{"addr", "alias", "cmd"})
 }
 
 // NewRedisExporter returns a new exporter of Redis metrics.
