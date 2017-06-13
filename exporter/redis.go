@@ -53,8 +53,10 @@ var (
 		"uptime_in_seconds": "uptime_in_seconds",
 
 		// # Clients
-		"connected_clients": "connected_clients",
-		"blocked_clients":   "blocked_clients",
+		"connected_clients": 					"connected_clients",
+		"blocked_clients":  				 	"blocked_clients",
+		"client_longest_output_list": "client_longest_output_list"
+
 
 		// # Memory
 		"used_memory":             "memory_used_bytes",
@@ -91,6 +93,7 @@ var (
 		"loading":           "loading_dump_file",
 		"connected_slaves":  "connected_slaves",
 		"repl_backlog_size": "replication_backlog_bytes",
+		"master_last_io_seconds_ago": "master_last_io_seconds",
 
 		// # CPU
 		"used_cpu_sys":           "used_cpu_sys",
@@ -233,7 +236,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 func includeMetric(s string) bool {
 
-	if strings.HasPrefix(s, "db") || strings.HasPrefix(s, "cmdstat_") || strings.HasPrefix(s, "cluster_") {
+	if strings.HasPrefix(s, "db") || strings.HasPrefix(s, "cmdstat_") || strings.HasPrefix(s, "cluster_" || strings.HasPrefix(s, "slave")) {
 		return true
 	}
 
@@ -250,6 +253,49 @@ func extractVal(s string) (val float64, err error) {
 	val, err = strconv.ParseFloat(split[1], 64)
 	if err != nil {
 		return 0, fmt.Errorf("nope")
+	}
+	return
+}
+
+func extractString(s string)(val string, err error){
+	split := strings.Split(s, "=")
+	if len(split) != 2 {
+		return "", fmt.Errorf("nope")
+	}
+	val = split[1]
+	return
+}
+
+/*
+	slave0:ip=10.33.7.107,port=30000,state=online,offset=2850396954,lag=1
+*/
+func parseSlaveString(slaveId string, detail string)(slaveAddr string, lag float64, ok bool){
+	ok = false
+	if !strings.HasPrefix(slaveId, "slave"){
+		return
+	}
+	split := strings.Split(detail, ",")
+	if len(split) != 5 {
+		return
+	}
+
+	var err error
+	ok = true
+	var host string
+	if host, err = extractString(split[0]); err != nil{
+		ok =false
+		return
+	}
+
+	var port string
+	if port, err = extractString(split[1]); err != nil{
+		ok =false
+		return
+	}
+	slaveAddr = host + ":" + port
+	if lag, err = extractVal(split[4]); err != nil {
+		ok = false
+		return
 	}
 	return
 }
@@ -343,6 +389,13 @@ func (e *Exporter) extractInfoMetrics(info, addr string, alias string, scrapes c
 			e.metricsMtx.RLock()
 			e.metrics["command_call_duration_seconds_count"].WithLabelValues(addr, alias, cmd).Set(calls)
 			e.metrics["command_call_duration_seconds_sum"].WithLabelValues(addr, alias, cmd).Set(usecTotal / 1e6)
+			e.metricsMtx.RUnlock()
+			continue
+		}
+
+		if slave, lag , ok := parseSlaveString(split[0], split[1]); ok{
+			e.metricsMtx.RLock()
+			e.metrics["replication_slave_lag"].WithLabelValues(addr, alias, slave).Set(lag)
 			e.metricsMtx.RUnlock()
 			continue
 		}
